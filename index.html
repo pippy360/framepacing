@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frame Pacing Demo (Auto Reset)</title>
+<style>
+    body {
+        font-family: sans-serif;
+        margin: 20px;
+        background-color: #f4f4f4;
+        color: #333;
+        line-height: 1.6;
+    }
+    .container {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    h1, h2 {
+        color: #0056b3;
+    }
+    .animation-area {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        margin-top: 20px;
+        margin-bottom: 20px;
+        min-height: 150px;
+        background-color: #e9ecef;
+        padding: 10px;
+        border-radius: 4px;
+        overflow: hidden; /* Ensure boxes don't appear outside during reset */
+    }
+    .box {
+        width: 50px;
+        height: 50px;
+        background-color: #007bff;
+        position: relative; /* For JavaScript animation positioning */
+    }
+    .info {
+        margin-top: 10px;
+        padding: 10px;
+        background-color: #e2e3e5;
+        border-radius: 4px;
+    }
+    button {
+        padding: 10px 15px;
+        font-size: 16px;
+        color: #fff;
+        background-color: #28a745;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-right: 10px;
+    }
+    button:hover {
+        background-color: #218838;
+    }
+    #goodPacingBox {
+        /* JavaScript will handle this animation */
+    }
+    #badPacingBox {
+        /* JavaScript will handle this animation */
+    }
+    .explanation p {
+        margin-bottom: 10px;
+    }
+</style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Understanding Frame Pacing ⏱️ (Auto Reset)</h1>
+        <div class="explanation">
+            <p><strong>Frame pacing</strong> refers to the consistency of the time intervals between frames being displayed. Good frame pacing means frames are delivered at a steady, predictable rate, resulting in smooth motion. Bad frame pacing means the time between frames varies, leading to perceived stuttering or judder, even if the average frames per second (FPS) is high.</p>
+            <p>This demo illustrates the difference. Both boxes below aim to move across the screen in roughly the same amount of *total* time. The animations will automatically reset and loop.</p>
+        </div>
+
+        <button id="manualStartButton">Start/Restart Animations</button>
+        <button id="manualResetButton">Stop & Reset Animations</button>
+    </div>
+
+    <div class="container">
+        <h2>Demonstration Area</h2>
+        <div class="animation-area">
+            <div>
+                <h3>Good Frame Pacing 👍</h3>
+                <div id="goodPacingBox" class="box"></div>
+                <p class="info">This box should move smoothly.</p>
+            </div>
+            <div>
+                <h3>Bad Frame Pacing 👎</h3>
+                <div id="badPacingBox" class="box"></div>
+                <p class="info">This box might appear to stutter or jump.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Why is Frame Pacing Important? 🤔</h2>
+        <div class="explanation">
+            <p><strong>Perceived Smoothness:</strong> Even with a high average FPS, inconsistent frame times can make an animation or game feel choppy. Our eyes are sensitive to these inconsistencies.</p>
+            <p><strong>User Experience:</strong> Smooth visuals are crucial for a pleasant user experience in games, user interfaces, and any motion graphics. Stuttering can be distracting and frustrating.</p>
+            <p><strong>Input Responsiveness:</strong> While not directly demonstrated here, bad frame pacing can sometimes be linked to inconsistent input processing, making interactions feel laggy.</p>
+            <p>Imagine watching a movie where the film speeds up and slows down randomly – that's similar to the effect of bad frame pacing in digital graphics!</p>
+        </div>
+    </div>
+
+<script>
+    const goodBox = document.getElementById('goodPacingBox');
+    const badBox = document.getElementById('badPacingBox');
+    const manualStartButton = document.getElementById('manualStartButton');
+    const manualResetButton = document.getElementById('manualResetButton');
+    const animationArea = document.querySelector('.animation-area');
+    let animationAreaWidth = animationArea.clientWidth - 70; // Subtract box width and some padding
+
+    let goodAnimationId;
+    let badAnimationId;
+    let startTime;
+    let animationLoopTimeoutId; // To store the timeout ID for auto-reset
+
+    const totalDuration = 3000; // milliseconds (shortened for quicker loops)
+    const autoResetDelay = 1000; // milliseconds delay before restarting
+
+    // Function to update animationAreaWidth on resize
+    function updateAnimationWidth() {
+        animationAreaWidth = animationArea.clientWidth - 70;
+    }
+    window.addEventListener('resize', updateAnimationWidth);
+
+    function stopAndResetPositions() {
+        clearTimeout(animationLoopTimeoutId); // Clear any pending auto-reset
+        cancelAnimationFrame(goodAnimationId);
+        cancelAnimationFrame(badAnimationId);
+        goodBox.style.transform = `translateX(0px)`;
+        badBox.style.transform = `translateX(0px)`;
+        startTime = null; // Critical for resetting animation timing
+        // Reset bad box specific variables for next run
+        badBoxLastFrameTime = 0;
+        badBoxPosition = 0;
+        badBoxTimeAccumulator = 0;
+    }
+
+    function startAnimations() {
+        stopAndResetPositions(); // Ensure a clean slate
+
+        // Re-initialize bad box state variables every time we start
+        badBoxLastFrameTime = 0;
+        badBoxPosition = 0;
+        badBoxTimeAccumulator = 0;
+
+        function animateGoodBox(timestamp) {
+            if (!startTime) startTime = timestamp;
+            const elapsed = timestamp - startTime;
+            const progress = Math.min(elapsed / totalDuration, 1);
+            goodBox.style.transform = `translateX(${progress * animationAreaWidth}px)`;
+
+            if (progress < 1) {
+                goodAnimationId = requestAnimationFrame(animateGoodBox);
+            } else {
+                // Good box reached the end, trigger auto-reset for both
+                clearTimeout(animationLoopTimeoutId); // Clear previous timeout if any
+                animationLoopTimeoutId = setTimeout(startAnimations, autoResetDelay);
+            }
+        }
+
+        function animateBadBox(timestamp) {
+            if (!startTime) { // Wait for global start time to be set (by goodBox or initial call)
+                 // If goodBox hasn't set startTime yet (e.g. on very first frame after a reset),
+                 // we might need to initiate it here or rely on goodBox's initiation.
+                 // For simplicity, we let goodBox handle initial startTime,
+                 // but if goodBox completes first, startTime might be from previous run.
+                 // The stopAndResetPositions() nullifying startTime is key.
+                if (!badBoxLastFrameTime) badBoxLastFrameTime = timestamp; // Initial timestamp for badBox
+            } else {
+                 if (!badBoxLastFrameTime || badBoxLastFrameTime > timestamp) { // if startTime was reset, reset badBoxLastFrameTime
+                    badBoxLastFrameTime = timestamp;
+                 }
+            }
+
+
+            const elapsedSinceGlobalStart = timestamp - startTime;
+            const deltaTime = timestamp - badBoxLastFrameTime;
+            badBoxLastFrameTime = timestamp;
+
+            // Ensure deltaTime is not negative or excessively large after a pause/reset
+            if (deltaTime < 0 || deltaTime > 200) { // Heuristic to handle tab switching or long pauses
+                 // Skipping this frame update for badbox to avoid large jump if deltaTime is huge
+                 badAnimationId = requestAnimationFrame(animateBadBox);
+                 return;
+            }
+
+
+            badBoxTimeAccumulator += deltaTime;
+
+            let frameAdvance = 0;
+            if (Math.random() > 0.3) {
+                frameAdvance = (deltaTime / totalDuration) * animationAreaWidth;
+            } else {
+                if (Math.random() > 0.5) {
+                    frameAdvance = (deltaTime * (2 + Math.random() * 2) / totalDuration) * animationAreaWidth;
+                } else {
+                    frameAdvance = (deltaTime * Math.random() * 0.2 / totalDuration) * animationAreaWidth;
+                }
+            }
+
+            const targetProgress = Math.min(elapsedSinceGlobalStart / totalDuration, 1);
+            const targetPosition = targetProgress * animationAreaWidth;
+
+            if (badBoxPosition + frameAdvance > targetPosition && badBoxPosition < animationAreaWidth * 0.95) {
+                 badBoxPosition = Math.min(badBoxPosition + frameAdvance, targetPosition + (animationAreaWidth * 0.05));
+            } else {
+                badBoxPosition += frameAdvance;
+            }
+            badBoxPosition = Math.min(badBoxPosition, animationAreaWidth);
+
+            badBox.style.transform = `translateX(${badBoxPosition}px)`;
+
+            // Bad box continues animating as long as the good box (or global time) hasn't reached the end
+            // Its own loop is managed by requestAnimationFrame. The auto-reset is triggered by goodBox.
+            if (targetProgress < 1) {
+                badAnimationId = requestAnimationFrame(animateBadBox);
+            } else {
+                badBox.style.transform = `translateX(${animationAreaWidth}px)`;
+            }
+        }
+
+        // Set startTime here for the very first frame.
+        // animateGoodBox will use it, animateBadBox will also use it.
+        // For subsequent frames within the same animation run, startTime remains the same.
+        // When startAnimations is called again (for auto-reset), startTime will be nullified by stopAndResetPositions,
+        // then re-established by the first call to animateGoodBox in the new run.
+        //
+        // No, this is slightly wrong. startTime should be set *inside* the first requestAnimationFrame callback
+        // to ensure it's the actual start timestamp of the animation frames.
+
+        requestAnimationFrame(timestamp => {
+            startTime = timestamp; // Set global start time for THIS run of animations
+            animateGoodBox(timestamp);
+            animateBadBox(timestamp);
+        });
+    }
+
+
+    manualStartButton.addEventListener('click', startAnimations);
+    manualResetButton.addEventListener('click', stopAndResetPositions);
+
+    // Initial setup
+    updateAnimationWidth(); // Calculate initial width
+    stopAndResetPositions(); // Set boxes to start
+
+    // Optional: Auto-start the animation on page load
+    // setTimeout(startAnimations, 500); // Start after a brief delay
+
+</script>
+
+</body>
+</html>
