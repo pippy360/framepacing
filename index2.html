@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frame Pacing: FPS vs. Smoothness</title>
+<style>
+    body {
+        font-family: sans-serif;
+        margin: 20px;
+        background-color: #f0f0f0;
+        color: #333;
+        line-height: 1.6;
+    }
+    .container {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 25px;
+    }
+    h1, h2 {
+        color: #0056b3;
+        border-bottom: 2px solid #e0e0e0;
+        padding-bottom: 5px;
+    }
+    .explanation {
+        background-color: #e9f5ff;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        border-left: 5px solid #007bff;
+    }
+    .animation-wrapper {
+        border: 1px solid #ccc;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+    }
+    .animation-area {
+        position: relative;
+        width: 100%;
+        height: 60px;
+        background-color: #e9ecef;
+        border-radius: 4px;
+        margin-top: 10px;
+        overflow: hidden;
+    }
+    .box {
+        width: 40px;
+        height: 40px;
+        position: absolute;
+        top: 10px;
+        left: 0; /* Will be controlled by JS */
+        border-radius: 3px;
+    }
+    #boxA { background-color: #dc3545; /* Red */ }
+    #boxB { background-color: #28a745; /* Green */ }
+    .stats {
+        font-size: 0.9em;
+        color: #555;
+        margin-top: 5px;
+    }
+    .stats span { font-weight: bold; }
+    button {
+        padding: 10px 18px;
+        font-size: 16px;
+        color: #fff;
+        background-color: #007bff;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-right: 10px;
+        transition: background-color 0.2s;
+    }
+    button:hover {
+        background-color: #0056b3;
+    }
+    #controls {
+        margin-bottom: 20px;
+    }
+</style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Frame Pacing: FPS vs. Perceived Smoothness</h1>
+        <div class="explanation">
+            <p>This demo compares two animations:</p>
+            <ul>
+                <li><strong>Box A (Red):</strong> Aims for a higher average "logical" Frames Per Second (FPS). However, its frame delivery is inconsistent (bad frame pacing), causing stutter or judder.</li>
+                <li><strong>Box B (Green):</strong> Runs at a lower, but consistent, FPS (good frame pacing).</li>
+            </ul>
+            <p>Observe which animation appears smoother, even if Box A has a higher "Processed Frames" count. This illustrates why consistent frame times are often more important than raw FPS for visual quality.</p>
+        </div>
+
+        <div id="controls">
+            <button id="startButton">Start/Restart Animations</button>
+            <button id="stopButton">Stop Animations</button>
+        </div>
+
+        <div class="animation-wrapper">
+            <h2>Box A: High Average "Logical" FPS, Bad Pacing</h2>
+            <div class="animation-area">
+                <div id="boxA" class="box"></div>
+            </div>
+            <div class="stats">Processed Frames: <span id="boxAFrameCount">0</span></div>
+            <div class="stats">Target Avg. Logical FPS: <span id="boxATargetFps">0</span></div>
+        </div>
+
+        <div class="animation-wrapper">
+            <h2>Box B: Steady (Lower) FPS, Good Pacing</h2>
+            <div class="animation-area">
+                <div id="boxB" class="box"></div>
+            </div>
+            <div class="stats">Processed Frames: <span id="boxBFrameCount">0</span></div>
+            <div class="stats">Target FPS: <span id="boxBTargetFps">0</span></div>
+        </div>
+    </div>
+
+<script>
+    const boxA = document.getElementById('boxA');
+    const boxB = document.getElementById('boxB');
+    const boxAFrameCountDisplay = document.getElementById('boxAFrameCount');
+    const boxBFrameCountDisplay = document.getElementById('boxBFrameCount');
+    const boxATargetFpsDisplay = document.getElementById('boxATargetFps');
+    const boxBTargetFpsDisplay = document.getElementById('boxBTargetFps');
+
+    const startButton = document.getElementById('startButton');
+    const stopButton = document.getElementById('stopButton');
+    const animationArea = document.querySelector('.animation-area'); // Assuming both are same width
+    let animationAreaWidth = 0; // Will be set on start
+
+    let animationId;
+    let startTime;
+    let loopTimeoutId;
+
+    // Animation Parameters
+    const totalDuration = 5000; // 5 seconds for one pass
+    const autoResetDelay = 1500; // Delay before auto-restarting
+
+    // Box A: High "Logical" FPS, Bad Pacing
+    let boxAPosition = 0;
+    let boxAFrameCount = 0;
+    const boxA_targetAvgLogicalFps = 90; // Target more frame processing attempts
+    const boxA_idealFrameInterval = 1000 / boxA_targetAvgLogicalFps;
+    let boxA_timeAccumulator = 0;
+    let boxA_lastTimestamp = 0;
+    let boxA_lastVisualUpdateTime = 0;
+    const badPacingStutterChance = 0.4; // 40% chance to "stutter" (not update visually)
+    const badPacingForceUpdateInterval = 150; // ms, force update if stalled too long
+
+    // Box B: Steady (Lower) FPS, Good Pacing
+    let boxBPosition = 0;
+    let boxBFrameCount = 0;
+    const boxB_targetFps = 30; // Lower but steady FPS
+    const boxB_frameInterval = 1000 / boxB_targetFps;
+    let boxB_lastFrameTime = 0;
+
+    function updateDisplayFPS() {
+        boxATargetFpsDisplay.textContent = boxA_targetAvgLogicalFps;
+        boxBTargetFpsDisplay.textContent = boxB_targetFps;
+    }
+
+    function resetAnimationsState() {
+        boxAPosition = 0;
+        boxAFrameCount = 0;
+        boxA_timeAccumulator = 0;
+        boxA_lastTimestamp = 0;
+        boxA_lastVisualUpdateTime = 0;
+
+        boxBPosition = 0;
+        boxBFrameCount = 0;
+        boxB_lastFrameTime = 0;
+
+        boxA.style.transform = `translateX(0px)`;
+        boxB.style.transform = `translateX(0px)`;
+        boxAFrameCountDisplay.textContent = '0';
+        boxBFrameCountDisplay.textContent = '0';
+
+        startTime = null; // Critical for restart
+    }
+
+    function startOrRestartAnimations() {
+        cancelAnimationFrame(animationId);
+        clearTimeout(loopTimeoutId);
+        resetAnimationsState();
+        animationAreaWidth = animationArea.clientWidth - 40; // box width
+
+        animationId = requestAnimationFrame(animationLoop);
+    }
+
+    function stopAnimations() {
+        cancelAnimationFrame(animationId);
+        clearTimeout(loopTimeoutId);
+        // Optionally, keep current positions or reset them
+        // resetAnimationsState(); // To fully reset
+    }
+
+    function animationLoop(timestamp) {
+        if (!startTime) {
+            startTime = timestamp;
+            boxA_lastTimestamp = timestamp;
+            boxA_lastVisualUpdateTime = timestamp;
+            boxB_lastFrameTime = timestamp;
+        }
+
+        const elapsedGlobal = timestamp - startTime;
+
+        // --- Box A (High Avg FPS, Bad Pacing) ---
+        const deltaA = timestamp - boxA_lastTimestamp;
+        boxA_lastTimestamp = timestamp;
+        boxA_timeAccumulator += deltaA;
+
+        let theoreticalFramesProcessedThisTick = 0;
+        while (boxA_timeAccumulator >= boxA_idealFrameInterval && elapsedGlobal < totalDuration) {
+            boxAFrameCount++;
+            theoreticalFramesProcessedThisTick++;
+            boxA_timeAccumulator -= boxA_idealFrameInterval;
+        }
+        boxAFrameCountDisplay.textContent = boxAFrameCount;
+
+        // Calculate current target position based on overall progress
+        let currentTargetAPosition = Math.min((elapsedGlobal / totalDuration) * animationAreaWidth, animationAreaWidth);
+
+        // Introduce stutter for Box A's visual update
+        if (theoreticalFramesProcessedThisTick > 0) {
+            const shouldStutter = Math.random() < badPacingStutterChance;
+            const timeSinceLastVisualUpdate = timestamp - boxA_lastVisualUpdateTime;
+
+            if (!shouldStutter || timeSinceLastVisualUpdate > badPacingForceUpdateInterval) {
+                boxAPosition = currentTargetAPosition; // Jump to where it should be now
+                boxA.style.transform = `translateX(${boxAPosition}px)`;
+                boxA_lastVisualUpdateTime = timestamp;
+            }
+            // If it stutters, position remains visually the same, but time (elapsedGlobal) moves on.
+            // The next visual update will make it "jump" to the new currentTargetAPosition.
+        }
+
+
+        // --- Box B (Steady Lower FPS, Good Pacing) ---
+        if (timestamp - boxB_lastFrameTime >= boxB_frameInterval && elapsedGlobal < totalDuration) {
+            boxB_lastFrameTime = timestamp - ( (timestamp - boxB_lastFrameTime) % boxB_frameInterval ); // Align to interval
+
+            boxBFrameCount++;
+            boxBPosition = Math.min((elapsedGlobal / totalDuration) * animationAreaWidth, animationAreaWidth);
+            boxB.style.transform = `translateX(${boxBPosition}px)`;
+            boxBFrameCountDisplay.textContent = boxBFrameCount;
+        }
+
+
+        // --- Loop/Reset ---
+        if (elapsedGlobal >= totalDuration) {
+            // Ensure final positions
+            boxA.style.transform = `translateX(${animationAreaWidth}px)`;
+            boxB.style.transform = `translateX(${animationAreaWidth}px)`;
+            boxAFrameCountDisplay.textContent = boxAFrameCount; // Final count
+            boxBFrameCountDisplay.textContent = boxBFrameCount; // Final count
+
+            loopTimeoutId = setTimeout(startOrRestartAnimations, autoResetDelay);
+        } else {
+            animationId = requestAnimationFrame(animationLoop);
+        }
+    }
+
+    startButton.addEventListener('click', startOrRestartAnimations);
+    stopButton.addEventListener('click', stopAnimations);
+
+    // Initialize
+    updateDisplayFPS();
+    resetAnimationsState(); // Set initial text for frame counts
+    // Consider starting animation automatically or after a small delay:
+    // setTimeout(startOrRestartAnimations, 500);
+
+</script>
+</body>
+</html>
