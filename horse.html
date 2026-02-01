@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frame Pacing Demo: Muybridge Horse</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1 { margin-bottom: 10px; }
+        p { color: #aaa; margin-bottom: 30px; max-width: 600px; text-align: center; }
+
+        .container {
+            display: flex;
+            gap: 40px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .viewer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* The 'Screen' showing the film */
+        .film-screen {
+            width: 300px;
+            height: 200px;
+            background-color: #000;
+            border: 4px solid #333;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        /* The Sprite Image Layer */
+        .film-strip {
+            width: 100%;
+            height: 100%;
+            background-image: url('https://upload.wikimedia.org/wikipedia/commons/7/73/The_Horse_in_Motion.jpg');
+            background-repeat: no-repeat;
+            /* The image is a cabinet card. We scale it up to focus on the grid. */
+            background-size: 439% 411%; 
+            image-rendering: pixelated; /* Keeps it sharp */
+        }
+
+        .label {
+            margin-top: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .sub-label {
+            font-size: 0.9rem;
+            color: #888;
+            margin-top: 5px;
+            font-family: monospace;
+        }
+
+        .status-bar {
+            margin-top: 5px;
+            height: 4px;
+            width: 100%;
+            background: #333;
+            position: relative;
+        }
+        .blip {
+            height: 100%;
+            width: 4px;
+            background: #0f0;
+            position: absolute;
+            right: 0;
+            opacity: 0;
+            transition: opacity 0.1s;
+        }
+        .viewer.bad .blip { background: #f00; }
+
+    </style>
+</head>
+<body>
+
+    <h1>Frame Pacing Demo</h1>
+    <p>Both animations use the exact same 11 frames of Eadweard Muybridge's "The Horse in Motion" (1878).</p>
+
+    <div class="container">
+        <div class="viewer">
+            <div class="film-screen">
+                <div id="horse-good" class="film-strip"></div>
+            </div>
+            <div class="status-bar"><div id="blip-good" class="blip"></div></div>
+            <div class="label">Consistent Pacing</div>
+            <div class="sub-label">100ms per frame (Fixed)</div>
+        </div>
+
+        <div class="viewer bad">
+            <div class="film-screen">
+                <div id="horse-bad" class="film-strip"></div>
+            </div>
+            <div class="status-bar"><div id="blip-bad" class="blip"></div></div>
+            <div class="label">Bad Pacing</div>
+            <div class="sub-label" id="bad-label">Variable ms per frame</div>
+        </div>
+    </div>
+
+    <script>
+        // Total frames in the sequence (The 12th frame is usually a stop, we'll loop 1-11)
+        const TOTAL_FRAMES = 11;
+        
+        // Coordinates for the sprite sheet (4x3 grid on the original cabinet card)
+        // We calculate rough percentage offsets to center each frame.
+        // The original image has borders, so we tweak the offsets slightly.
+        const frames = [
+            { x: 3, y: 6 },    { x: 34, y: 6 },    { x: 65, y: 6 },    { x: 96.5, y: 6 },
+            { x: 2, y: 55 },   { x: 34, y: 55 },   { x: 65, y: 55 },   { x: 66, y: 55 },
+            { x: 3, y: 102 },  { x: 34, y: 102 },  { x: 65, y: 102 }
+        ];
+
+        function updateFrame(elementId, frameIndex) {
+          //frameIndex = 8;
+            const el = document.getElementById(elementId);
+            const pos = frames[frameIndex % TOTAL_FRAMES];
+            
+            // Adjust background position to show the correct frame
+            // We use specific offsets to crop out the text/borders of the cabinet card
+            el.style.backgroundPosition = `${pos.x}% ${0 + (pos.y * 0.7)}%`;
+        }
+
+        function flashBlip(id) {
+            const el = document.getElementById(id);
+            el.style.opacity = 1;
+            setTimeout(() => el.style.opacity = 0, 50);
+        }
+
+        // --- GOOD PACING LOOP ---
+        let frameGood = 0;
+        setInterval(() => {
+            updateFrame('horse-good', frameGood);
+            flashBlip('blip-good');
+            frameGood++;
+        }, 100); // Strict 100ms interval
+
+
+        // --- BAD PACING LOOP ---
+        let frameBad = 0;
+        
+        function badLoop() {
+            updateFrame('horse-bad', frameBad);
+            flashBlip('blip-bad');
+            frameBad++;
+
+            // Create a variable delay using a Sine wave to simulate "slow down / speed up"
+            // The delay oscillates between 20ms (fast) and 300ms (slow)
+            const time = Date.now() / 1000;
+            const variance = Math.sin(time * 2); // Oscillate over time
+            
+            // Map the sine wave (-1 to 1) to a delay (20ms to 300ms)
+            // If variance is high, delay is long (lag). If variance is low, delay is short (speed up).
+            let delay = 160 + (variance * 140); 
+            
+            // Add a little random jitter for realism
+            delay += (Math.random() * 30 - 15);
+
+            // Update label text for visualization
+            document.getElementById('bad-label').innerText = `${Math.floor(delay)}ms delay`;
+
+            setTimeout(badLoop, delay);
+        }
+
+        // Start the bad loop
+        badLoop();
+
+    </script>
+</body>
+</html>
